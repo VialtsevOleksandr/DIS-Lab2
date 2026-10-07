@@ -1,0 +1,313 @@
+================================================================================
+  PostgreSQL
+================================================================================
+
+--- 1. Резюме конкретного користувача ---
+Запит:
+SELECT
+    r.id,
+    u.login,
+    r.first_name,
+    r.last_name,
+    r.patronymic,
+    r.birth_date,
+    r.about,
+    c.name AS city,
+    (
+        SELECT array_agg(h.name)
+        FROM resume_hobbies rh
+        JOIN hobbies h ON h.id = rh.hobby_id
+        WHERE rh.resume_id = r.id
+    ) AS hobbies,
+    (
+        SELECT json_agg(json_build_object(
+            'company', comp.name,
+            'position', we.position,
+            'start_date', we.start_date,
+            'end_date', we.end_date
+        ))
+        FROM work_experience we
+        JOIN companies comp ON comp.id = we.company_id
+        WHERE we.resume_id = r.id
+    ) AS experience
+FROM resumes r
+JOIN users u ON u.id = r.user_id
+JOIN cities c ON c.id = r.city_id
+WHERE u.login = %(login)s;
+Результат (1):
+  {"id": 1, "login": "oleksandr_kovalenko", "first_name": "Олександр", "last_name": "Коваленко", "patronymic": "Миколайович", "birth_date": "1987-03-24", "about": "Шукаю позицію HR Manager у продуктовій компанії.", "city": "Дніпро", "hobbies": ["малювання", "подорожі"], "experience": [{"company": "EPAM", "position": "UI/UX Designer", "start_date": "2009-03-01", "end_date": "2012-07-01"}, {"company": "Grammarly", "position": "HR Manager", "start_date": "2012-07-01", "end_date": null}, {"company": "Нова Пошта", "position": "Data Analyst", "start_date": "2008-01-01", "end_date": "2009-02-01"}]}
+
+--- 2. Усі унікальні хобі ---
+Запит:
+SELECT DISTINCT h.name
+FROM resume_hobbies rh
+JOIN hobbies h ON h.id = rh.hobby_id
+ORDER BY h.name;
+Результат (15):
+  {"name": "біг"}
+  {"name": "велоспорт"}
+  {"name": "гітара"}
+  {"name": "йога"}
+  {"name": "кулінарія"}
+  {"name": "малювання"}
+  {"name": "настільні ігри"}
+  {"name": "плавання"}
+  {"name": "подорожі"}
+  {"name": "програмування"}
+  {"name": "туризм"}
+  {"name": "фотографія"}
+  {"name": "футбол"}
+  {"name": "читання"}
+  {"name": "шахи"}
+
+--- 3. Усі унікальні міста ---
+Запит:
+SELECT DISTINCT c.name FROM cities c
+JOIN resumes r ON r.city_id = c.id
+ORDER BY c.name;
+Результат (8):
+  {"name": "Вінниця"}
+  {"name": "Дніпро"}
+  {"name": "Запоріжжя"}
+  {"name": "Івано-Франківськ"}
+  {"name": "Київ"}
+  {"name": "Львів"}
+  {"name": "Одеса"}
+  {"name": "Харків"}
+
+--- 4. Хобі мешканців заданого міста ---
+Запит:
+SELECT DISTINCT h.name
+FROM resume_hobbies rh
+JOIN hobbies h ON h.id = rh.hobby_id
+JOIN resumes r ON r.id = rh.resume_id
+JOIN cities c ON c.id = r.city_id
+WHERE c.name = %(city)s
+ORDER BY h.name;
+Результат (12):
+  {"name": "велоспорт"}
+  {"name": "гітара"}
+  {"name": "йога"}
+  {"name": "кулінарія"}
+  {"name": "малювання"}
+  {"name": "плавання"}
+  {"name": "подорожі"}
+  {"name": "програмування"}
+  {"name": "туризм"}
+  {"name": "фотографія"}
+  {"name": "футбол"}
+  {"name": "шахи"}
+
+--- 5. Здобувачі зі спільним закладом роботи ---
+Запит:
+SELECT
+    c.name AS company,
+    array_agg(DISTINCT u.login || ' (' || r.last_name || ' ' || r.first_name || ')') AS colleagues
+FROM companies c
+JOIN work_experience we ON we.company_id = c.id
+JOIN resumes r ON r.id = we.resume_id
+JOIN users u ON u.id = r.user_id
+GROUP BY c.name
+HAVING count(DISTINCT r.id) > 1
+ORDER BY c.name;
+Результат (10):
+  {"company": "Ciklum", "colleagues": ["iuliia_shevchenko (Шевченко Юлія)", "iurii_honcharenko (Гончаренко Юрій)", "ivan_polishchuk (Поліщук Іван)", "kateryna_bondarenko (Бондаренко Катерина)", "nataliia_honcharenko (Гончаренко Наталія)", "nataliia_honcharenko2 (Гончаренко Наталія)", "oksana_lysenko (Лисенко Оксана)", "olena_tkachenko (Ткаченко Олена)", "serhii_oliinyk (Олійник Сергій)", "sofiia_lysenko (Лисенко Софія)", "taras_kovalenko (Коваленко Тарас)"]}
+  {"company": "EPAM", "colleagues": ["daryna_kravchenko (Кравченко Дарина)", "ivan_tkachenko (Ткаченко Іван)", "kateryna_bondarenko (Бондаренко Катерина)", "kateryna_honcharenko (Гончаренко Катерина)", "nataliia_tkachenko (Ткаченко Наталія)", "oleksandr_kovalenko (Коваленко Олександр)", "taras_rudenko (Руденко Тарас)"]}
+  {"company": "GlobalLogic", "colleagues": ["andrii_kravchenko (Кравченко Андрій)", "anna_tkachenko (Ткаченко Анна)", "bohdan_tkachenko (Ткаченко Богдан)", "daryna_savchenko (Савченко Дарина)", "dmytro_honcharenko (Гончаренко Дмитро)", "iurii_shevchenko (Шевченко Юрій)", "maksym_kravchenko (Кравченко Максим)", "maksym_oliinyk (Олійник Максим)", "oksana_pavlenko (Павленко Оксана)", "oleh_kravchenko (Кравченко Олег)", "serhii_shevchenko (Шевченко Сергій)", "serhii_shevchenko9 (Шевченко Сергій)", "sofiia_pavlenko (Павленко Софія)"]}
+  {"company": "Grammarly", "colleagues": ["anna_tkachenko (Ткаченко Анна)", "bohdan_moroz (Мороз Богдан)", "iuliia_tkachenko (Ткаченко Юлія)", "iurii_oliinyk (Олійник Юрій)", "iurii_shevchenko (Шевченко Юрій)", "kateryna_bondarenko (Бондаренко Катерина)", "kateryna_honcharenko (Гончаренко Катерина)", "oksana_pavlenko (Павленко Оксана)", "oleh_kravchenko (Кравченко Олег)", "oleksandr_honcharenko (Гончаренко Олександр)", "oleksandr_kovalenko (Коваленко Олександр)", "sofiia_lysenko (Лисенко Софія)"]}
+  {"company": "MacPaw", "colleagues": ["dmytro_honcharenko (Гончаренко Дмитро)", "iurii_lysenko (Лисенко Юрій)", "kateryna_kravchenko (Кравченко Катерина)", "nataliia_honcharenko (Гончаренко Наталія)", "nataliia_honcharenko2 (Гончаренко Наталія)", "serhii_bondarenko (Бондаренко Сергій)", "serhii_oliinyk (Олійник Сергій)", "serhii_shevchenko9 (Шевченко Сергій)"]}
+  {"company": "Monobank", "colleagues": ["bohdan_moroz (Мороз Богдан)", "iuliia_tkachenko6 (Ткаченко Юлія)", "iurii_oliinyk (Олійник Юрій)", "kateryna_kravchenko (Кравченко Катерина)", "kateryna_shevchenko (Шевченко Катерина)", "maksym_oliinyk (Олійник Максим)", "nataliia_honcharenko (Гончаренко Наталія)", "oleh_kravchenko (Кравченко Олег)", "oleksandr_melnyk (Мельник Олександр)", "serhii_shevchenko5 (Шевченко Сергій)", "serhii_shevchenko9 (Шевченко Сергій)", "sofiia_kovalenko (Коваленко Софія)"]}
+  {"company": "Rozetka", "colleagues": ["andrii_polishchuk (Поліщук Андрій)", "anna_melnyk (Мельник Анна)", "daryna_rudenko (Руденко Дарина)", "dmytro_honcharenko (Гончаренко Дмитро)", "iryna_shevchenko (Шевченко Ірина)", "ivan_tkachenko (Ткаченко Іван)", "olena_tkachenko (Ткаченко Олена)", "sofiia_kovalenko (Коваленко Софія)"]}
+  {"company": "SoftServe", "colleagues": ["andrii_kravchenko (Кравченко Андрій)", "anna_melnyk (Мельник Анна)", "iuliia_savchenko (Савченко Юлія)", "kateryna_honcharenko (Гончаренко Катерина)", "kateryna_shevchenko (Шевченко Катерина)", "maksym_kravchenko (Кравченко Максим)", "oleksandr_honcharenko (Гончаренко Олександр)", "olena_rudenko (Руденко Олена)", "sofiia_kovalenko (Коваленко Софія)", "sofiia_lysenko (Лисенко Софія)"]}
+  {"company": "Київстар", "colleagues": ["bohdan_moroz (Мороз Богдан)", "daryna_kravchenko (Кравченко Дарина)", "daryna_savchenko (Савченко Дарина)", "iurii_oliinyk (Олійник Юрій)", "iurii_shevchenko (Шевченко Юрій)", "kateryna_shevchenko (Шевченко Катерина)", "maksym_kravchenko (Кравченко Максим)", "nataliia_bondarenko (Бондаренко Наталія)", "olena_tkachenko (Ткаченко Олена)", "serhii_shevchenko5 (Шевченко Сергій)", "taras_moroz (Мороз Тарас)"]}
+  {"company": "Нова Пошта", "colleagues": ["andrii_polishchuk (Поліщук Андрій)", "anna_melnyk (Мельник Анна)", "daryna_savchenko (Савченко Дарина)", "iurii_lysenko (Лисенко Юрій)", "nataliia_honcharenko2 (Гончаренко Наталія)", "oleksandr_honcharenko (Гончаренко Олександр)", "oleksandr_kovalenko (Коваленко Олександр)", "serhii_oliinyk (Олійник Сергій)"]}
+================================================================================
+  MongoDB
+================================================================================
+
+--- 1. Резюме конкретного користувача ---
+Запит:
+def q1(db, login):
+    """1. Резюме конкретного користувача"""
+    return list(db.users.find(
+        {"login": login},
+        {"_id": 0, "password_hash": 0}
+    ))
+Результат (1):
+  {"login": "oleksandr_kovalenko", "resume": {"first_name": "Олександр", "last_name": "Коваленко", "patronymic": "Миколайович", "birth_date": "1987-03-24", "about": "Шукаю позицію HR Manager у продуктовій компанії.", "city": "Дніпро", "hobbies": ["малювання", "подорожі"], "experience": [{"company": "Нова Пошта", "position": "Data Analyst", "start_date": "2008-01-01", "end_date": "2009-02-01"}, {"company": "EPAM", "position": "UI/UX Designer", "start_date": "2009-03-01", "end_date": "2012-07-01"}, {"company": "Grammarly", "position": "HR Manager", "start_date": "2012-07-01", "end_date": null}]}}
+
+--- 2. Усі унікальні хобі ---
+Запит:
+def q2(db):
+    """2. Усі унікальні хобі"""
+    return db.users.distinct("resume.hobbies")
+Результат (15):
+  "біг"
+  "велоспорт"
+  "гітара"
+  "йога"
+  "кулінарія"
+  "малювання"
+  "настільні ігри"
+  "плавання"
+  "подорожі"
+  "програмування"
+  "туризм"
+  "фотографія"
+  "футбол"
+  "читання"
+  "шахи"
+
+--- 3. Усі унікальні міста ---
+Запит:
+def q3(db):
+    """3. Усі унікальні міста"""
+    return db.users.distinct("resume.city")
+Результат (8):
+  "Івано-Франківськ"
+  "Вінниця"
+  "Дніпро"
+  "Запоріжжя"
+  "Київ"
+  "Львів"
+  "Одеса"
+  "Харків"
+
+--- 4. Хобі мешканців заданого міста ---
+Запит:
+def q4(db, city):
+    """4. Хобі мешканців заданого міста"""
+    return db.users.distinct("resume.hobbies", {"resume.city": city})
+Результат (12):
+  "велоспорт"
+  "гітара"
+  "йога"
+  "кулінарія"
+  "малювання"
+  "плавання"
+  "подорожі"
+  "програмування"
+  "туризм"
+  "фотографія"
+  "футбол"
+  "шахи"
+
+--- 5. Здобувачі зі спільним закладом роботи ---
+Запит:
+def q5(db):
+    """5. Здобувачі зі спільним закладом роботи"""
+    return list(db.users.aggregate([
+        {"$unwind": "$resume.experience"},
+        {"$group": {
+            "_id": "$resume.experience.company",
+            "colleagues": {
+                "$addToSet": {"$concat": ["$login", " (", "$resume.last_name", " ", "$resume.first_name", ")"]}
+            }
+        }},
+        {"$match": {"$expr": {"$gt": [{"$size": "$colleagues"}, 1]}}},
+        {"$project": {"_id": 0, "company": "$_id", "colleagues": 1}},
+        {"$sort": {"company": 1}}
+    ]))
+Результат (10):
+  {"colleagues": ["iuliia_shevchenko (Шевченко Юлія)", "sofiia_lysenko (Лисенко Софія)", "nataliia_honcharenko (Гончаренко Наталія)", "olena_tkachenko (Ткаченко Олена)", "taras_kovalenko (Коваленко Тарас)", "nataliia_honcharenko2 (Гончаренко Наталія)", "kateryna_bondarenko (Бондаренко Катерина)", "ivan_polishchuk (Поліщук Іван)", "serhii_oliinyk (Олійник Сергій)", "oksana_lysenko (Лисенко Оксана)", "iurii_honcharenko (Гончаренко Юрій)"], "company": "Ciklum"}
+  {"colleagues": ["kateryna_bondarenko (Бондаренко Катерина)", "kateryna_honcharenko (Гончаренко Катерина)", "oleksandr_kovalenko (Коваленко Олександр)", "ivan_tkachenko (Ткаченко Іван)", "nataliia_tkachenko (Ткаченко Наталія)", "taras_rudenko (Руденко Тарас)", "daryna_kravchenko (Кравченко Дарина)"], "company": "EPAM"}
+  {"colleagues": ["sofiia_pavlenko (Павленко Софія)", "bohdan_tkachenko (Ткаченко Богдан)", "oksana_pavlenko (Павленко Оксана)", "dmytro_honcharenko (Гончаренко Дмитро)", "iurii_shevchenko (Шевченко Юрій)", "maksym_oliinyk (Олійник Максим)", "maksym_kravchenko (Кравченко Максим)", "oleh_kravchenko (Кравченко Олег)", "daryna_savchenko (Савченко Дарина)", "serhii_shevchenko (Шевченко Сергій)", "serhii_shevchenko9 (Шевченко Сергій)", "anna_tkachenko (Ткаченко Анна)", "andrii_kravchenko (Кравченко Андрій)"], "company": "GlobalLogic"}
+  {"colleagues": ["iurii_shevchenko (Шевченко Юрій)", "oksana_pavlenko (Павленко Оксана)", "oleksandr_kovalenko (Коваленко Олександр)", "oleksandr_honcharenko (Гончаренко Олександр)", "iuliia_tkachenko (Ткаченко Юлія)", "oleh_kravchenko (Кравченко Олег)", "kateryna_honcharenko (Гончаренко Катерина)", "sofiia_lysenko (Лисенко Софія)", "anna_tkachenko (Ткаченко Анна)", "iurii_oliinyk (Олійник Юрій)", "kateryna_bondarenko (Бондаренко Катерина)", "bohdan_moroz (Мороз Богдан)"], "company": "Grammarly"}
+  {"colleagues": ["serhii_bondarenko (Бондаренко Сергій)", "iurii_lysenko (Лисенко Юрій)", "kateryna_kravchenko (Кравченко Катерина)", "dmytro_honcharenko (Гончаренко Дмитро)", "nataliia_honcharenko (Гончаренко Наталія)", "nataliia_honcharenko2 (Гончаренко Наталія)", "serhii_shevchenko9 (Шевченко Сергій)", "serhii_oliinyk (Олійник Сергій)"], "company": "MacPaw"}
+  {"colleagues": ["iurii_oliinyk (Олійник Юрій)", "bohdan_moroz (Мороз Богдан)", "oleksandr_melnyk (Мельник Олександр)", "kateryna_kravchenko (Кравченко Катерина)", "oleh_kravchenko (Кравченко Олег)", "nataliia_honcharenko (Гончаренко Наталія)", "sofiia_kovalenko (Коваленко Софія)", "maksym_oliinyk (Олійник Максим)", "serhii_shevchenko9 (Шевченко Сергій)", "iuliia_tkachenko6 (Ткаченко Юлія)", "kateryna_shevchenko (Шевченко Катерина)", "serhii_shevchenko5 (Шевченко Сергій)"], "company": "Monobank"}
+  {"colleagues": ["iryna_shevchenko (Шевченко Ірина)", "ivan_tkachenko (Ткаченко Іван)", "olena_tkachenko (Ткаченко Олена)", "dmytro_honcharenko (Гончаренко Дмитро)", "daryna_rudenko (Руденко Дарина)", "anna_melnyk (Мельник Анна)", "andrii_polishchuk (Поліщук Андрій)", "sofiia_kovalenko (Коваленко Софія)"], "company": "Rozetka"}
+  {"colleagues": ["andrii_kravchenko (Кравченко Андрій)", "maksym_kravchenko (Кравченко Максим)", "olena_rudenko (Руденко Олена)", "oleksandr_honcharenko (Гончаренко Олександр)", "iuliia_savchenko (Савченко Юлія)", "sofiia_kovalenko (Коваленко Софія)", "sofiia_lysenko (Лисенко Софія)", "kateryna_honcharenko (Гончаренко Катерина)", "kateryna_shevchenko (Шевченко Катерина)", "anna_melnyk (Мельник Анна)"], "company": "SoftServe"}
+  {"colleagues": ["daryna_kravchenko (Кравченко Дарина)", "maksym_kravchenko (Кравченко Максим)", "nataliia_bondarenko (Бондаренко Наталія)", "olena_tkachenko (Ткаченко Олена)", "iurii_shevchenko (Шевченко Юрій)", "daryna_savchenko (Савченко Дарина)", "iurii_oliinyk (Олійник Юрій)", "bohdan_moroz (Мороз Богдан)", "kateryna_shevchenko (Шевченко Катерина)", "taras_moroz (Мороз Тарас)", "serhii_shevchenko5 (Шевченко Сергій)"], "company": "Київстар"}
+  {"colleagues": ["daryna_savchenko (Савченко Дарина)", "iurii_lysenko (Лисенко Юрій)", "oleksandr_kovalenko (Коваленко Олександр)", "oleksandr_honcharenko (Гончаренко Олександр)", "nataliia_honcharenko2 (Гончаренко Наталія)", "serhii_oliinyk (Олійник Сергій)", "anna_melnyk (Мельник Анна)", "andrii_polishchuk (Поліщук Андрій)"], "company": "Нова Пошта"}
+================================================================================
+  Neo4j
+================================================================================
+
+--- 1. Резюме конкретного користувача ---
+Запит:
+MATCH (u:User {login: $login})-[:HAS_RESUME]->(r:Resume)
+OPTIONAL MATCH (r)-[:LIVES_IN]->(c:City)
+OPTIONAL MATCH (r)-[:HAS_HOBBY]->(h:Hobby)
+OPTIONAL MATCH (r)-[w:WORKED_AT]->(co:Company)
+RETURN u.login, r, c.name AS city,
+       collect(DISTINCT h.name) AS hobbies,
+       collect(DISTINCT {company: co.name, position: w.position,
+                         start_date: w.start_date, end_date: w.end_date}) AS experience
+Результат (1):
+  {"u.login": "oleksandr_kovalenko", "r": {"patronymic": "Миколайович", "birth_date": "1987-03-24", "about": "Шукаю позицію HR Manager у продуктовій компанії.", "last_name": "Коваленко", "first_name": "Олександр"}, "city": "Дніпро", "hobbies": ["подорожі", "малювання"], "experience": [{"end_date": null, "company": "Grammarly", "position": "HR Manager", "start_date": "2012-07-01"}, {"end_date": "2012-07-01", "company": "EPAM", "position": "UI/UX Designer", "start_date": "2009-03-01"}, {"end_date": "2009-02-01", "company": "Нова Пошта", "position": "Data Analyst", "start_date": "2008-01-01"}]}
+
+--- 2. Усі унікальні хобі ---
+Запит:
+MATCH (:Resume)-[:HAS_HOBBY]->(h:Hobby)
+RETURN DISTINCT h.name AS hobby
+ORDER BY hobby
+Результат (15):
+  {"hobby": "біг"}
+  {"hobby": "велоспорт"}
+  {"hobby": "гітара"}
+  {"hobby": "йога"}
+  {"hobby": "кулінарія"}
+  {"hobby": "малювання"}
+  {"hobby": "настільні ігри"}
+  {"hobby": "плавання"}
+  {"hobby": "подорожі"}
+  {"hobby": "програмування"}
+  {"hobby": "туризм"}
+  {"hobby": "фотографія"}
+  {"hobby": "футбол"}
+  {"hobby": "читання"}
+  {"hobby": "шахи"}
+
+--- 3. Усі унікальні міста ---
+Запит:
+MATCH (:Resume)-[:LIVES_IN]->(c:City)
+RETURN DISTINCT c.name AS city
+ORDER BY city
+Результат (8):
+  {"city": "Івано-Франківськ"}
+  {"city": "Вінниця"}
+  {"city": "Дніпро"}
+  {"city": "Запоріжжя"}
+  {"city": "Київ"}
+  {"city": "Львів"}
+  {"city": "Одеса"}
+  {"city": "Харків"}
+
+--- 4. Хобі мешканців заданого міста ---
+Запит:
+MATCH (r:Resume)-[:HAS_HOBBY]->(h:Hobby)
+MATCH (r)-[:LIVES_IN]->(c:City {name: $city})
+RETURN DISTINCT h.name AS hobby
+ORDER BY hobby
+Результат (12):
+  {"hobby": "велоспорт"}
+  {"hobby": "гітара"}
+  {"hobby": "йога"}
+  {"hobby": "кулінарія"}
+  {"hobby": "малювання"}
+  {"hobby": "плавання"}
+  {"hobby": "подорожі"}
+  {"hobby": "програмування"}
+  {"hobby": "туризм"}
+  {"hobby": "фотографія"}
+  {"hobby": "футбол"}
+  {"hobby": "шахи"}
+
+--- 5. Здобувачі зі спільним закладом роботи ---
+Запит:
+MATCH (u:User)-[:HAS_RESUME]->(r:Resume)-[:WORKED_AT]->(c:Company)
+WITH c, collect(DISTINCT u.login + ' (' + r.last_name + ' ' + r.first_name + ')') AS colleagues
+WHERE size(colleagues) > 1
+RETURN c.name AS company, colleagues
+ORDER BY company
+Результат (10):
+  {"company": "Ciklum", "colleagues": ["olena_tkachenko (Ткаченко Олена)", "taras_kovalenko (Коваленко Тарас)", "nataliia_honcharenko (Гончаренко Наталія)", "ivan_polishchuk (Поліщук Іван)", "nataliia_honcharenko2 (Гончаренко Наталія)", "kateryna_bondarenko (Бондаренко Катерина)", "sofiia_lysenko (Лисенко Софія)", "iuliia_shevchenko (Шевченко Юлія)", "oksana_lysenko (Лисенко Оксана)", "iurii_honcharenko (Гончаренко Юрій)", "serhii_oliinyk (Олійник Сергій)"]}
+  {"company": "EPAM", "colleagues": ["oleksandr_kovalenko (Коваленко Олександр)", "kateryna_honcharenko (Гончаренко Катерина)", "ivan_tkachenko (Ткаченко Іван)", "kateryna_bondarenko (Бондаренко Катерина)", "nataliia_tkachenko (Ткаченко Наталія)", "taras_rudenko (Руденко Тарас)", "daryna_kravchenko (Кравченко Дарина)"]}
+  {"company": "GlobalLogic", "colleagues": ["dmytro_honcharenko (Гончаренко Дмитро)", "oksana_pavlenko (Павленко Оксана)", "iurii_shevchenko (Шевченко Юрій)", "oleh_kravchenko (Кравченко Олег)", "bohdan_tkachenko (Ткаченко Богдан)", "maksym_oliinyk (Олійник Максим)", "maksym_kravchenko (Кравченко Максим)", "sofiia_pavlenko (Павленко Софія)", "daryna_savchenko (Савченко Дарина)", "serhii_shevchenko (Шевченко Сергій)", "serhii_shevchenko9 (Шевченко Сергій)", "anna_tkachenko (Ткаченко Анна)", "andrii_kravchenko (Кравченко Андрій)"]}
+  {"company": "Grammarly", "colleagues": ["oleksandr_kovalenko (Коваленко Олександр)", "oleksandr_honcharenko (Гончаренко Олександр)", "oksana_pavlenko (Павленко Оксана)", "iurii_shevchenko (Шевченко Юрій)", "iuliia_tkachenko (Ткаченко Юлія)", "oleh_kravchenko (Кравченко Олег)", "kateryna_honcharenko (Гончаренко Катерина)", "bohdan_moroz (Мороз Богдан)", "kateryna_bondarenko (Бондаренко Катерина)", "iurii_oliinyk (Олійник Юрій)", "sofiia_lysenko (Лисенко Софія)", "anna_tkachenko (Ткаченко Анна)"]}
+  {"company": "MacPaw", "colleagues": ["kateryna_kravchenko (Кравченко Катерина)", "dmytro_honcharenko (Гончаренко Дмитро)", "iurii_lysenko (Лисенко Юрій)", "serhii_bondarenko (Бондаренко Сергій)", "nataliia_honcharenko (Гончаренко Наталія)", "nataliia_honcharenko2 (Гончаренко Наталія)", "serhii_shevchenko9 (Шевченко Сергій)", "serhii_oliinyk (Олійник Сергій)"]}
+  {"company": "Monobank", "colleagues": ["kateryna_kravchenko (Кравченко Катерина)", "oleksandr_melnyk (Мельник Олександр)", "oleh_kravchenko (Кравченко Олег)", "maksym_oliinyk (Олійник Максим)", "sofiia_kovalenko (Коваленко Софія)", "nataliia_honcharenko (Гончаренко Наталія)", "bohdan_moroz (Мороз Богдан)", "iurii_oliinyk (Олійник Юрій)", "serhii_shevchenko9 (Шевченко Сергій)", "serhii_shevchenko5 (Шевченко Сергій)", "iuliia_tkachenko6 (Ткаченко Юлія)", "kateryna_shevchenko (Шевченко Катерина)"]}
+  {"company": "Rozetka", "colleagues": ["dmytro_honcharenko (Гончаренко Дмитро)", "olena_tkachenko (Ткаченко Олена)", "daryna_rudenko (Руденко Дарина)", "sofiia_kovalenko (Коваленко Софія)", "ivan_tkachenko (Ткаченко Іван)", "anna_melnyk (Мельник Анна)", "andrii_polishchuk (Поліщук Андрій)", "iryna_shevchenko (Шевченко Ірина)"]}
+  {"company": "SoftServe", "colleagues": ["oleksandr_honcharenko (Гончаренко Олександр)", "olena_rudenko (Руденко Олена)", "iuliia_savchenko (Савченко Юлія)", "kateryna_honcharenko (Гончаренко Катерина)", "sofiia_kovalenko (Коваленко Софія)", "maksym_kravchenko (Кравченко Максим)", "sofiia_lysenko (Лисенко Софія)", "anna_melnyk (Мельник Анна)", "andrii_kravchenko (Кравченко Андрій)", "kateryna_shevchenko (Шевченко Катерина)"]}
+  {"company": "Київстар", "colleagues": ["olena_tkachenko (Ткаченко Олена)", "iurii_shevchenko (Шевченко Юрій)", "nataliia_bondarenko (Бондаренко Наталія)", "maksym_kravchenko (Кравченко Максим)", "daryna_savchenko (Савченко Дарина)", "bohdan_moroz (Мороз Богдан)", "iurii_oliinyk (Олійник Юрій)", "serhii_shevchenko5 (Шевченко Сергій)", "daryna_kravchenko (Кравченко Дарина)", "kateryna_shevchenko (Шевченко Катерина)", "taras_moroz (Мороз Тарас)"]}
+  {"company": "Нова Пошта", "colleagues": ["oleksandr_kovalenko (Коваленко Олександр)", "oleksandr_honcharenko (Гончаренко Олександр)", "iurii_lysenko (Лисенко Юрій)", "daryna_savchenko (Савченко Дарина)", "nataliia_honcharenko2 (Гончаренко Наталія)", "serhii_oliinyk (Олійник Сергій)", "anna_melnyk (Мельник Анна)", "andrii_polishchuk (Поліщук Андрій)"]}

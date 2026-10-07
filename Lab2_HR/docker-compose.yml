@@ -1,0 +1,17 @@
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: hr_mongodb
+    ports:
+      - "27017:27017"
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:latest
+    container_name: hr_neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/password123
+    restart: unless-stopped
